@@ -1,3 +1,5 @@
+[![Build status](https://travis-ci.org/david-christiansen/racket-zippers.svg?branch=master)](https://travis-ci.org/david-christiansen/racket-zippers)
+[![Coverage Status](https://coveralls.io/repos/github/david-christiansen/racket-zippers/badge.svg?branch=master)](https://coveralls.io/github/david-christiansen/racket-zippers?branch=master)
 Zippers for Racket
 =======
 
