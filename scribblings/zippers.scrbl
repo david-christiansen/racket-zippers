@@ -176,4 +176,18 @@ Descend into the @racket[car] of a focused pair.
          zipper?]{
 Descend into the @racket[cdr] of a focused pair.
 }
+
+@subsection{Zippers for Immutable Sets}
+
+@defstruct[set-member-frame ((other-members set?))]{
+ A zipper frame that represents the fact that the previous
+ focus was a set and the zipper descended into one of its
+ members.}
+
+@defproc[(down/set-member (element any/c)
+                          (z (zipper-of/c set?)))
+         zipper?]{
+Descend into @racket[element] in a focused set.
+}
+
 @(generate-bibliography)

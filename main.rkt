@@ -6,8 +6,10 @@
                      racket/struct-info
                      racket/syntax)
          racket/contract
+         (only-in racket/function thunk)
          racket/match
-         racket/provide-syntax)
+         racket/provide-syntax
+         racket/set)
 
 (provide (struct-out zipper)
          ;; Basic zipper utilities
@@ -27,7 +29,16 @@
          (struct-out pair-cdr-frame)
          (contract-out
           [down/car (-> (zipper-of/c pair?) zipper?)]
-          [down/cdr (-> (zipper-of/c pair?) zipper?)]))
+          [down/cdr (-> (zipper-of/c pair?) zipper?)])
+         ;; Set zippers
+         (struct-out set-member-frame)
+         (contract-out
+          [down/set-member (->i ([z (m) (zipper-of/c
+                                         (and/c set?
+                                                (lambda (s)
+                                                  (set-member? s m))))]
+                                 [m any/c])
+                                [result zipper?])]))
 
 (module+ test
   (require rackunit))
@@ -152,7 +163,7 @@
 ;;; A macro for deriving zipper frames for structs.
 ;;;
 ;;; Essentially, this implements the product rule for the
-;;; differentiation underlying zipper derivation.
+;;; differentiation underlying zipper derivation (à la McBride).
 ;;;
 ;;; For each field in a struct, we generate a new struct representing
 ;;; the fact that the zipper client descended into that field. This
@@ -164,10 +175,14 @@
 ;;; that field.
 ;;;
 ;;; For a struct (struct s (f1 ... fn)), we generate:
-;;;   1. (struct s-f1-frame (f2 ... fn)) ... (struct s-fn-frame (f1 ... fn-1))
-;;;      for representing zipper frames
+;;;   1. (struct s-f1-frame (f2 ... fn)) ...
+;;;      (struct s-fk-frame (f1 ... fk-1 fk+1 ... fn)) ...
+;;;      (struct s-fn-frame (f1 ... fn-1))
+;;;      for representing zipper frames at each choice of field
+;;;
 ;;;   2. procedures s-f1-down ... s-fn-down for descending the zipper
-;;;      into the corresponding field (that is, making s-fk-frame for field fk)
+;;;      into the corresponding field (that is, making s-fk-frame for
+;;;      field fk)
 (define-syntax (define-struct-zipper-frames stx)
   (syntax-parse stx
     [(_ name:id names:id ...)
@@ -195,8 +210,7 @@
 (module* test-prov #f
   (provide (struct-out A)
            (struct-out B)
-#;           (struct-zipper-out A B)
-             )
+           (struct-zipper-out A B))
   (struct A (b c d))
   (struct B (b c d))
   (define-struct-zipper-frames A B))
@@ -205,6 +219,7 @@
 
 (module+ test
   (require (submod ".." test-prov))
+  (define foo (A-b-frame "c" "d"))
 
   (struct L () #:transparent)
   (struct T (left right) #:transparent)
@@ -219,6 +234,9 @@
   (check-equal? z1 z3)
   (define z4 (down/T-right z3))
   (check-equal? z4 (zipper (L) (list (T-right-frame (T (L) (L))))))
+
+  (check-exn exn:fail:contract?
+             (thunk (down/T-left (zip "not a T"))))
 
   (struct variable (name) #:transparent)
   (struct lam (name body) #:transparent)
@@ -312,4 +330,42 @@
   (check-equal? (rebuild (edit reverse right-twice))
                 '(a b d c))
   (check-eqv? (zipper-focus (down/car right-twice)) 'c)
-)
+  (check-exn exn:fail:contract?
+             (thunk (down/car (zip 'nope))))
+  (check-exn exn:fail:contract?
+             (thunk (down/cdr (zip 'nope)))))
+
+
+(struct set-member-frame (other-members)
+  #:property prop:zipper-frame
+  (lambda (frame focus)
+    (match frame
+      [(set-member-frame other-members)
+       (set-add other-members focus)]))
+  #:transparent)
+
+(define (down/set-member element z)
+  (match z
+    [(zipper (? set? s) context)
+     (if (set-member? s element)
+         (zipper element (cons (set-member-frame (set-remove s element))
+                               context))
+         (raise-argument-error 'down/set-member
+                               (format "(set-member? ~a ~a)" s element)
+                               s))]
+    [(zipper focus _)
+     (raise-argument-error 'down/set-member
+                           (symbol->string 'set?)
+                           focus)]))
+
+(module+ test
+  (define set-of-sets (zip (set (set 1 2) (set 2 3) 'bananas)))
+  (define set-12 (down/set-member (set 1 2) set-of-sets))
+  (define one (down/set-member 1 set-12))
+  (check-equal? (zipper-focus one) 1)
+  (define other-set (rebuild (edit add1 one)))
+  (check-equal? other-set (set (set 2) 'bananas (set 3 2)))
+  (check-exn exn:fail:contract?
+             (thunk (down/set-member "halløjsa" set-of-sets)))
+  (check-exn exn:fail:contract?
+             (thunk (down/set-member 1 (zip (cons 1 2))))))
