@@ -9,4 +9,5 @@ automation is provided for zippers of datatypes that are construed as
 coproducts of structs by deriving the infrastructure for a struct to
 participate in a zipper.
 
-See the package documentation for details.
+See the [package documentation](http://docs.racket-lang.org/zippers/)
+for details.
