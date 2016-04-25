@@ -19,8 +19,8 @@
           [zip (-> any/c zipper?)]
           [zipper-frame? (-> any/c boolean?)]
           [prop:zipper-frame struct-type-property?]
-          [zipper-at-top? (-> zipper? boolean?)]
-          [zipper-not-at-top? (-> zipper? boolean?)]
+          [zipper-at-top? (-> any/c boolean?)]
+          [zipper-not-at-top? (-> any/c boolean?)]
           [up (-> zipper-not-at-top? zipper?)]
           [rebuild (-> zipper? any/c)]
           [edit (-> (-> any/c any/c) zipper? zipper?)])
