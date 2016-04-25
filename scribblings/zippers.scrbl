@@ -1,8 +1,9 @@
 #lang scribble/manual
 
 @require[@for-label[zippers
-                    racket/base]]
-@(require scriblib/autobib)
+                    racket]]
+@(require scribble/eval
+          scriblib/autobib)
 @(define-cite ~cite citet generate-bibliography)
 
 @(define zipper-paper
@@ -74,6 +75,10 @@ to do a bit more work:
 
 @section[#:tag "zippers-reference"]{Reference}
 
+ @(define helper-eval (make-base-eval))
+@interaction-eval[#:eval helper-eval
+                   (require racket/match racket/set zippers)]
+
 @subsection{Zippers}
 @defstruct[zipper ((focus any/c) (context (list-of zipper-frame?)))]{
  A zipper consists of a focus and a context. The context is
@@ -88,34 +93,83 @@ to do a bit more work:
 @defproc[(zip (focus any/c))
          zipper?]{
  Creates a @racket[zipper] with the identity context and
- the provided value at the focus. }
+ the provided value at the focus.
+
+ @examples[
+     #:eval helper-eval
+     (zip (list 1 2 3))
+     (zip '(set (list 1 2) (list 2 3)))
+ ]}
+
 
 @defproc[(edit (f (-> any/c any/c)) (z zipper?))
          zipper?]{
  Returns a new zipper in which the focused value has been
  replaced by the result of applying @racket[f] to the
- previous focused value.}
+ previous focused value.
+
+ @examples[
+     #:eval helper-eval
+     (edit add1
+           (zip 1))
+ ]}
 
 @defproc[(up (z zipper-not-at-top?))
          zipper?]{
  Moves the focus of the @racket[z] one level upward,
- "popping" the context stack.}
+ "popping" the context stack.
+
+ @examples[
+     #:eval helper-eval
+     (define sandwich (zip '(bread peanut-butter jam)))
+     sandwich
+     (define fillings (down/cdr sandwich))
+     fillings
+     (up fillings)
+ ]
+}
 
 @defproc[(rebuild (z zipper?))
          any/c]{
- Reconstructs the value represented by the zipper @racket[z].}
+ Reconstructs the value represented by the zipper @racket[z].
+
+ @examples[
+     #:eval helper-eval
+     fillings
+     (rebuild fillings)
+     (rebuild (edit reverse fillings))
+ ]
+}
 
 @defproc[(zipper-at-top? (z any/c))
          boolean?]{
  Returns @racket[#t] if @racket[z] is a zipper with the
  identity context, or @racket[#f] if it is any other value.
+
+ @examples[
+     #:eval helper-eval
+     sandwich
+     fillings
+     (zipper-at-top? fillings)
+     (zipper-at-top? sandwich)
+     (zipper-at-top? 'not-a-zipper)
+ ]
 }
 
 @defproc[(zipper-not-at-top? (z any/c))
          boolean?]{
  Returns @racket[#t] if @racket[z] is a zipper with a
  non-identity context, or @racket[#f] if it is any other
- value. }
+ value.
+
+ @examples[
+     #:eval helper-eval
+     sandwich
+     fillings
+     (zipper-not-at-top? fillings)
+     (zipper-not-at-top? sandwich)
+     (zipper-not-at-top? 'not-a-zipper)
+ ]}
 
 @defproc[(zipper-of/c (c contract?))
          contract?]{
@@ -153,7 +207,24 @@ to do a bit more work:
  reconstruct the original instance, with the former focus
  replacing the field accessed by @racketid[acc].
  Additionally, a procedure @racket[down/acc] is generated to
- descend a zipper along that accessor.}
+ descend a zipper along that accessor.
+
+ @examples[
+     #:eval helper-eval
+     (struct branch (left value right) #:transparent)
+     (struct leaf () #:transparent)
+     (define-struct-zipper-frames branch leaf)
+     (define a-tree (zip (branch (branch (leaf) 12 (leaf)) 15 (leaf))))
+     (zipper-focus a-tree)
+     (define left-subtree (down/branch-left a-tree))
+     (zipper-focus left-subtree)
+     (define with-new-left-subtree
+       (edit (match-lambda
+                [(branch l v r) (branch l (* v v) r)])
+             left-subtree))
+     (rebuild with-new-left-subtree)
+ ]
+}
 
 @subsection{Zippers for Pairs}
 
