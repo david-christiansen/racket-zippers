@@ -80,7 +80,7 @@ to do a bit more work:
                    (require racket/match racket/set zippers)]
 
 @subsection{Zippers}
-@defstruct[zipper ((focus any/c) (context (list-of zipper-frame?)))]{
+@defstruct*[zipper ((focus any/c) (context (list-of zipper-frame?)))]{
  A zipper consists of a focus and a context. The context is
  a list of frames, each of which can reconstruct one level
  of the original tree structure. The frame representing the
@@ -228,12 +228,12 @@ to do a bit more work:
 
 @subsection{Zippers for Pairs}
 
-@defstruct[pair-car-frame ((cdr any/c))]{
+@defstruct*[pair-car-frame ((cdr any/c))]{
  A zipper frame that represents the fact that the previous
  focus was a pair and the zipper descended into its 
  @racket[car].}
 
-@defstruct[pair-cdr-frame ((car any/c))]{
+@defstruct*[pair-cdr-frame ((car any/c))]{
  A zipper frame that represents the fact that the previous
  focus was a pair and the zipper descended into its 
  @racket[cdr].}
@@ -250,7 +250,7 @@ Descend into the @racket[cdr] of a focused pair.
 
 @subsection{Zippers for Immutable Sets}
 
-@defstruct[set-member-frame ((other-members set?))]{
+@defstruct*[set-member-frame ((other-members set?))]{
  A zipper frame that represents the fact that the previous
  focus was a set and the zipper descended into one of its
  members.}
