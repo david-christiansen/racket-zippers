@@ -77,12 +77,21 @@
      #f]))
 
 (define (zipper-of/c c)
-  (make-contract #:name `(zipper-of/c ,c)
-                 #:first-order (lambda (z)
-                                 (match z
-                                   [(zipper focus _)
-                                    (c focus)]
-                                   [_ #f]))))
+  (make-flat-contract
+   #:name `(zipper-of/c ,c)
+   #:first-order (lambda (z)
+                   (match z
+                     [(zipper focus _)
+                      (c focus)]
+                     [_ #f]))))
+
+(module+ test
+  (check-false ((flat-contract-predicate (zipper-of/c pair?))
+                (zip "hi")))
+  (check-false ((flat-contract-predicate (zipper-of/c pair?))
+                (cons 1 2)))
+  (check-true ((flat-contract-predicate (zipper-of/c pair?))
+               (zip (cons 1 2)))))
 
 ;;; To go up, we ask the most recent frame to envelop the focus
 (define (up z)
@@ -238,6 +247,7 @@
   (check-exn exn:fail:contract?
              (thunk (down/T-left (zip "not a T"))))
 
+
   (struct variable (name) #:transparent)
   (struct lam (name body) #:transparent)
   (struct app (rator rand) #:transparent)
@@ -330,6 +340,8 @@
   (check-equal? (rebuild (edit reverse right-twice))
                 '(a b d c))
   (check-eqv? (zipper-focus (down/car right-twice)) 'c)
+  (check-equal? (rebuild (edit add1 (down/car (zip (cons 1 2)))))
+                (cons 2 2))
   (check-exn exn:fail:contract?
              (thunk (down/car (zip 'nope))))
   (check-exn exn:fail:contract?
