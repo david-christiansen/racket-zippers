@@ -15,6 +15,7 @@
          ;; Basic zipper utilities
          zipper-of/c
          define-struct-zipper-frames
+         struct-zipper-out
          (contract-out
           [zip (-> any/c zipper?)]
           [zipper-frame? (-> any/c boolean?)]

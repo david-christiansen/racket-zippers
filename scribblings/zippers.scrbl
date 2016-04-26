@@ -226,6 +226,12 @@ to do a bit more work:
  ]
 }
 
+@defform[(struct-zipper-out [struct-name ...])
+         #:contracts ((struct-name identifier?))]{
+
+ A provide transformer that exports the identifiers that are generated
+ using @racket[define-struct-zipper-frames].  }
+
 @subsection{Zippers for Pairs}
 
 @defstruct*[pair-car-frame ((cdr any/c))]{
