@@ -114,7 +114,12 @@
   (check-false ((flat-contract-predicate (zipper-of/c pair?))
                 (cons 1 2)))
   (check-true ((flat-contract-predicate (zipper-of/c pair?))
-               (zip (cons 1 2)))))
+               (zip (cons 1 2))))
+
+  (check-true ((flat-contract-predicate (zipper-in/c string?))
+               (zipper #f '("fake frame"))))
+  (check-true ((flat-contract-predicate (zipper-in/c string?))
+               (zipper #f '('fake 'context)))))
 
 ;;; To go up, we ask the most recent frame to envelop the focus
 (define (up z)
@@ -374,7 +379,7 @@
     [(zipper x (list-rest (list-item-frame (list-rest l ls) rs) context))
      (zipper l (cons (list-item-frame ls (cons x rs))
                      context))]
-    [(zipper x (list-rest (list-item-frame (list) rs)))
+    [(zipper x (list-rest (list-item-frame (list) rs) _))
      (raise-argument-error 'left/list
                            (symbol->string 'pair?)
                            '())]
@@ -391,7 +396,7 @@
   (match z
     [(zipper x (list-rest (list-item-frame ls (list-rest r rs)) context))
      (zipper r (cons (list-item-frame (cons x ls) rs) context))]
-    [(zipper x (list-rest (list-item-frame ls (list))))
+    [(zipper x (list-rest (list-item-frame ls (list)) _))
      (raise-argument-error 'right/list
                            (symbol->string 'pair?)
                            '())]
