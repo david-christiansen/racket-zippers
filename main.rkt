@@ -118,8 +118,8 @@
 
   (check-true ((flat-contract-predicate (zipper-in/c string?))
                (zipper #f '("fake frame"))))
-  (check-true ((flat-contract-predicate (zipper-in/c string?))
-               (zipper #f '('fake 'context)))))
+  (check-false ((flat-contract-predicate (zipper-in/c string?))
+                (zipper #f '('fake 'context)))))
 
 ;;; To go up, we ask the most recent frame to envelop the focus
 (define (up z)
