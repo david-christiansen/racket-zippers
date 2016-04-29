@@ -14,6 +14,7 @@
 (provide (struct-out zipper)
          ;; Basic zipper utilities
          zipper-of/c
+         zipper-in/c
          define-struct-zipper-frames
          struct-zipper-out
          (contract-out
@@ -25,12 +26,23 @@
           [up (-> zipper-not-at-top? zipper?)]
           [rebuild (-> zipper? any/c)]
           [edit (-> (-> any/c any/c) zipper? zipper?)])
-         ;; List zippers
+         ;; Pair zippers
          (struct-out pair-car-frame)
          (struct-out pair-cdr-frame)
          (contract-out
           [down/car (-> (zipper-of/c pair?) zipper?)]
           [down/cdr (-> (zipper-of/c pair?) zipper?)])
+         ;; List zippers
+         (struct-out list-item-frame)
+         (contract-out
+          [down/list-first (-> (zipper-of/c list?) zipper?)]
+          [down/list-ref (-> exact-nonnegative-integer?
+                             (zipper-of/c list?)
+                             zipper?)]
+          [left/list (-> (zipper-in/c list-item-frame?)
+                         (zipper-in/c list-item-frame?))]
+          [right/list (-> (zipper-in/c list-item-frame?)
+                          (zipper-in/c list-item-frame?))])
          ;; Set zippers
          (struct-out set-member-frame)
          (contract-out
@@ -85,6 +97,16 @@
                      [(zipper focus _)
                       (c focus)]
                      [_ #f]))))
+
+(define (zipper-in/c c)
+  (make-flat-contract
+   #:name `(zipper-in/c ,c)
+   #:first-order (lambda (z)
+                   (match z
+                     [(zipper _ (cons f fs))
+                      (c f)]
+                     [_ #f]))))
+
 
 (module+ test
   (check-false ((flat-contract-predicate (zipper-of/c pair?))
@@ -329,6 +351,69 @@
                            (symbol->string 'pair?)
                            focus)]))
 
+(struct list-item-frame (to-left to-right)
+  #:property prop:zipper-frame
+  (lambda (frame focus)
+    (match frame
+      [(list-item-frame l r)
+       (append (reverse l) (list focus) r)]))
+  #:transparent)
+
+(define (down/list-first z)
+  (match z
+    [(zipper (list-rest x xs) context)
+     (zipper x (cons (list-item-frame '() xs)
+                     context))]
+    [(zipper focus _)
+     (raise-argument-error 'down/list-first
+                           (symbol->string 'list?)
+                           focus)]))
+
+(define (left/list z)
+  (match z
+    [(zipper x (list-rest (list-item-frame (list-rest l ls) rs) context))
+     (zipper l (cons (list-item-frame ls (cons x rs))
+                     context))]
+    [(zipper x (list-rest (list-item-frame (list) rs)))
+     (raise-argument-error 'left/list
+                           (symbol->string 'pair?)
+                           '())]
+    [(zipper _ (cons f fs))
+     (raise-argument-error 'left/list
+                           (symbol->string list-item-frame?)
+                           f)]
+    [(zipper _ (list))
+     (raise-argument-error 'left/list
+                           (symbol->string pair?)
+                           '())]))
+
+(define (right/list z)
+  (match z
+    [(zipper x (list-rest (list-item-frame ls (list-rest r rs)) context))
+     (zipper r (cons (list-item-frame (cons x ls) rs) context))]
+    [(zipper x (list-rest (list-item-frame ls (list))))
+     (raise-argument-error 'right/list
+                           (symbol->string 'pair?)
+                           '())]
+    [(zipper _ (cons f fs))
+     (raise-argument-error 'right/list
+                           (symbol->string 'list-item-frame?)
+                           f)]
+    [(zipper _ (list))
+     (raise-argument-error 'right/list
+                           (symbol->string 'pair?)
+                           '())]))
+
+(define (down/list-ref i z)
+  (define (go-right j z)
+    (if (= j 0)
+        z
+        (go-right (sub1 j) (right/list z))))
+  (if (not (exact-nonnegative-integer? i))
+      (raise-argument-error 'down/list-ref
+                            (symbol->string 'exact-nonnegative-integer?)
+                            i)
+      (go-right i (down/list-first z))))
 
 (module+ test
   (define some-list (zip '(a b c d)))
@@ -346,7 +431,58 @@
   (check-exn exn:fail:contract?
              (thunk (down/car (zip 'nope))))
   (check-exn exn:fail:contract?
-             (thunk (down/cdr (zip 'nope)))))
+             (thunk (down/cdr (zip 'nope))))
+
+  ;; Grabbing a list-ref gives the right focus
+  (check-eqv? (zipper-focus (down/list-ref 3 some-list))
+              'd)
+  ;; Moving left works
+  (check-eqv? (zipper-focus (left/list (down/list-ref 3 some-list)))
+              'c)
+  ;; Moving right works
+  (check-eqv? (zipper-focus (right/list (left/list (down/list-ref 3 some-list))))
+              'd)
+
+  ;; Can't go left past beginning
+  (check-exn exn:fail:contract?
+             (thunk (left/list (down/list-first some-list))))
+  ;; Can't go right past end
+  (check-exn exn:fail:contract?
+             (thunk (right/list (down/list-ref 3 some-list))))
+
+  ;; Rebuilding works
+  (check-equal? (rebuild
+                 (edit symbol->string
+                       (left/list
+                        (down/list-ref 3 some-list))))
+                '(a b "c" d))
+
+  ;; Can't grab an element past the length of a list
+  (check-exn exn:fail:contract?
+             (thunk (down/list-ref 4 some-list)))
+
+  ;; Can't give bizzarre index values to down/list-ref
+  (check-exn exn:fail:contract?
+             (thunk (down/list-ref -1 some-list)))
+  (check-exn exn:fail:contract?
+             (thunk (down/list-ref "blue whale" some-list)))
+
+  ;; Focusing on list elements doesn't work when the focus isn't a list
+  (check-exn exn:fail:contract?
+             (thunk (down/list-ref 0 (zip "hi"))))
+
+  ;; Left and right should fail when the context is empty
+  (check-exn exn:fail:contract?
+             (thunk (left/list (zip '(a b c)))))
+  (check-exn exn:fail:contract?
+             (thunk (right/list (zip '(a b c)))))
+
+  ;; Left and right should fail when the context has the wrong frame
+  (check-exn exn:fail:contract?
+             (thunk (left/list (down/cdr some-list))))
+  (check-exn exn:fail:contract?
+             (thunk (right/list (down/cdr some-list))))
+)
 
 
 (struct set-member-frame (other-members)

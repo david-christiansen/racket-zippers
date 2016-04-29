@@ -176,6 +176,13 @@ to do a bit more work:
  Takes a contract @racket[c] and returns a new contract that
  accepts zippers focused on values accepted by @racket[c].}
 
+@defproc[(zipper-in/c (c contract?))
+         contract?]{
+ Takes a contract @racket[c] and returns a new contract that
+ accepts zippers whose top-level context frame is accepted by
+ by @racket[c].}
+
+
 @subsection{Context Frames}
 
 @defthing[prop:zipper-frame struct-type-property?]{
@@ -253,6 +260,40 @@ Descend into the @racket[car] of a focused pair.
          zipper?]{
 Descend into the @racket[cdr] of a focused pair.
 }
+
+@subsection{Zippers for Proper Lists}
+
+@defstruct*[list-item-frame ((to-left list?) (to-right list?))]{
+ A zipper frame that represents the fact that the previous focus was a
+ proper list and that the elements in @racket[to-left] were in reverse
+ order to the left of the current focus and the elements in
+ @racket[to-right] were in their present order to the right of the
+ current focus.
+}
+
+@defproc[(down/list-first (l (zipper-of/c pair?)))
+         zipper?]{
+ Descend into the first element of a focused list.
+}
+
+@defproc[(down/list-ref (i exact-nonnegative-integer?)
+                        (l (zipper-of/c pair?)))
+         zipper?]{
+ Descend into element @racket[i] of a focused list.
+}
+
+@defproc[(left/list (z (zipper-in/c list-item-frame?)))
+         (zipper-in/c list-item-frame?)]{
+ When focused on an element of a list, move the focus to the element
+ immediately to its left.
+}
+
+@defproc[(right/list (z (zipper-in/c list-item-frame?)))
+         (zipper-in/c list-item-frame?)]{
+ When focused on an element of a list, move the focus to the element
+ immediately to its right.
+}
+
 
 @subsection{Zippers for Immutable Sets}
 
