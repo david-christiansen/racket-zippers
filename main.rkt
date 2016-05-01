@@ -17,41 +17,47 @@
          zipper-in/c
          define-struct-zipper-frames
          struct-zipper-out
+         (struct-out zipper-movement)
          (contract-out
           [zip (-> any/c zipper?)]
           [zipper-frame? (-> any/c boolean?)]
           [prop:zipper-frame struct-type-property?]
           [zipper-at-top? (-> any/c boolean?)]
           [zipper-not-at-top? (-> any/c boolean?)]
-          [up (-> zipper-not-at-top? zipper?)]
+          [up (and/c (-> zipper-not-at-top? zipper?)
+                     zipper-movement?)]
+          [can-move? (-> zipper-movement? zipper? boolean?)]
           [rebuild (-> zipper? any/c)]
           [edit (-> (-> any/c any/c) zipper? zipper?)])
          ;; Pair zippers
          (struct-out pair-car-frame)
          (struct-out pair-cdr-frame)
          (contract-out
-          [down/car (-> (zipper-of/c pair?) zipper?)]
-          [down/cdr (-> (zipper-of/c pair?) zipper?)])
+          [down/car (and/c (-> (zipper-of/c pair?) zipper?)
+                           zipper-movement?)]
+          [down/cdr (and/c (-> (zipper-of/c pair?) zipper?)
+                           zipper-movement?)])
          ;; List zippers
          (struct-out list-item-frame)
          (contract-out
-          [down/list-first (-> (zipper-of/c list?) zipper?)]
+          [down/list-first (and/c (-> (zipper-of/c list?) zipper?)
+                                  zipper-movement?)]
           [down/list-ref (-> exact-nonnegative-integer?
-                             (zipper-of/c list?)
-                             zipper?)]
-          [left/list (-> (zipper-in/c list-item-frame?)
-                         (zipper-in/c list-item-frame?))]
-          [right/list (-> (zipper-in/c list-item-frame?)
-                          (zipper-in/c list-item-frame?))])
+                             (and/c (-> (zipper-of/c list?)
+                                        zipper?)
+                                    zipper-movement?))]
+          [left/list (and/c (-> (zipper-in/c list-item-frame?)
+                                (zipper-in/c list-item-frame?))
+                            zipper-movement?)]
+          [right/list (and/c (-> (zipper-in/c list-item-frame?)
+                                 (zipper-in/c list-item-frame?))
+                             zipper-movement?)])
          ;; Set zippers
          (struct-out set-member-frame)
          (contract-out
-          [down/set-member (->i ([z (m) (zipper-of/c
-                                         (and/c set?
-                                                (lambda (s)
-                                                  (set-member? s m))))]
-                                 [m any/c])
-                                [result zipper?])]))
+          [down/set-member (-> any/c
+                               (-> (zipper-of/c set?)
+                                    zipper?))]))
 
 (module+ test
   (require rackunit))
@@ -62,7 +68,6 @@
 ;;; represented as lists of frames, where the empty list is the
 ;;; context consisting of a hole. Each frame must know how to fill its
 ;;; hole.
-
 (struct zipper (focus context) #:transparent)
 
 (define (zip obj)
@@ -121,11 +126,24 @@
   (check-false ((flat-contract-predicate (zipper-in/c string?))
                 (zipper #f '('fake 'context)))))
 
+(struct zipper-movement (move possible?)
+  #:property prop:procedure (struct-field-index move)
+  #:transparent)
+
+(define (can-move? direction z)
+  (match direction
+    [(zipper-movement _ ok?)
+     (ok? z)]))
+
 ;;; To go up, we ask the most recent frame to envelop the focus
-(define (up z)
-  (match-let* ([(zipper focus (cons frame frames)) z]
-               [filler (zipper-frame-fill frame)])
-    (zipper (filler frame focus) frames)))
+(define up
+  (zipper-movement
+   (lambda (z)
+     (match-let* ([(zipper focus (cons frame frames)) z]
+                  [filler (zipper-frame-fill frame)])
+       (zipper (filler frame focus) frames)))
+   (lambda (z)
+     (pair? (zipper-context z)))))
 
 ;;; Go up all the way and extract the value
 (define (rebuild z)
@@ -180,19 +198,23 @@
              (make-name fields-pre ... focus fields-post ...)]))
         #:transparent)
       ...
-      (define/contract (descender-name z)
-        (-> (zipper-of/c name?) zipper?)
-        (match z
-          [(zipper (make-name fields-pre-patterns ...
-                              new-focus
-                              fields-post-patterns ...)
-                   context)
-           (zipper new-focus (cons (frame-struct-name fields-pre-patterns ... fields-post-patterns ...)
-                                   context))]
-          [(zipper focus _)
-           (raise-argument-error 'descender-name
-                                 (symbol->string 'name?)
-                                 focus)]))
+      (define/contract descender-name
+        (and/c (-> (zipper-of/c name?) zipper?)
+               zipper-movement?)
+        (zipper-movement
+         (lambda (z)
+           (match z
+             [(zipper (make-name fields-pre-patterns ...
+                                 new-focus
+                                 fields-post-patterns ...)
+                      context)
+              (zipper new-focus (cons (frame-struct-name fields-pre-patterns ... fields-post-patterns ...)
+                                      context))]
+             [(zipper focus _)
+              (raise-argument-error 'descender-name
+                                    (symbol->string 'name?)
+                                    focus)]))
+         (lambda (z) (name? (zipper-focus z)))))
       ...)))
 
 
@@ -274,7 +296,10 @@
 
   (check-exn exn:fail:contract?
              (thunk (down/T-left (zip "not a T"))))
-
+  (check-false (can-move? down/T-left (zip (L))))
+  (check-false (can-move? down/T-right (zip (L))))
+  (check-true (can-move? down/T-left (zip (T (L) (L)))))
+  (check-true (can-move? down/T-right (zip (T (L) (L)))))
 
   (struct variable (name) #:transparent)
   (struct lam (name body) #:transparent)
@@ -328,15 +353,18 @@
        (cons focus x)]))
   #:transparent)
 
-(define (down/car p)
-  (match p
-    [(zipper (cons fst snd) context)
-     (zipper fst (cons (pair-car-frame snd)
-                       context))]
-    [(zipper focus _)
-     (raise-argument-error 'down/car
-                           (symbol->string 'pair?)
-                           focus)]))
+(define down/car
+  (zipper-movement
+   (match-lambda
+     [(zipper (cons fst snd) context)
+      (zipper fst (cons (pair-car-frame snd)
+                        context))]
+     [(zipper focus _)
+      (raise-argument-error 'down/car
+                            (symbol->string 'pair?)
+                            focus)])
+   (lambda (z)
+     (pair? (zipper-focus z)))))
 
 (struct pair-cdr-frame (car)
   #:property prop:zipper-frame
@@ -346,15 +374,18 @@
        (cons x focus)]))
   #:transparent)
 
-(define (down/cdr p)
-  (match p
-    [(zipper (cons fst snd) context)
-     (zipper snd (cons (pair-cdr-frame fst)
-                       context))]
-    [(zipper focus _)
-     (raise-argument-error 'down/cdr
-                           (symbol->string 'pair?)
-                           focus)]))
+(define down/cdr
+  (zipper-movement
+   (match-lambda
+     [(zipper (cons fst snd) context)
+      (zipper snd (cons (pair-cdr-frame fst)
+                        context))]
+     [(zipper focus _)
+      (raise-argument-error 'down/cdr
+                            (symbol->string 'pair?)
+                            focus)])
+   (lambda (z)
+     (pair? (zipper-focus z)))))
 
 (struct list-item-frame (to-left to-right)
   #:property prop:zipper-frame
@@ -364,52 +395,69 @@
        (append (reverse l) (list focus) r)]))
   #:transparent)
 
-(define (down/list-first z)
-  (match z
-    [(zipper (list-rest x xs) context)
-     (zipper x (cons (list-item-frame '() xs)
-                     context))]
-    [(zipper focus _)
-     (raise-argument-error 'down/list-first
-                           (symbol->string 'list?)
-                           focus)]))
+(define down/list-first
+  (zipper-movement
+   (lambda (z)
+     (match z
+       [(zipper (list-rest x xs) context)
+        (zipper x (cons (list-item-frame '() xs)
+                        context))]
+       [(zipper focus _)
+        (raise-argument-error 'down/list-first
+                              (symbol->string 'list?)
+                              focus)]))
+   (lambda (z)
+     (pair? (zipper-focus z)))))
 
-(define (left/list z)
-  (match z
-    [(zipper x (list-rest (list-item-frame (list-rest l ls) rs) context))
-     (zipper l (cons (list-item-frame ls (cons x rs))
-                     context))]
-    [(zipper x (list-rest (list-item-frame (list) rs) _))
-     (raise-argument-error 'left/list
-                           (symbol->string 'pair?)
-                           '())]
-    [(zipper _ (cons f fs))
-     (raise-argument-error 'left/list
-                           (symbol->string list-item-frame?)
-                           f)]
-    [(zipper _ (list))
-     (raise-argument-error 'left/list
-                           (symbol->string pair?)
-                           '())]))
+(define left/list
+  (zipper-movement
+   (lambda (z)
+     (match z
+       [(zipper x (list-rest (list-item-frame (list-rest l ls) rs) context))
+        (zipper l (cons (list-item-frame ls (cons x rs))
+                        context))]
+       [(zipper x (list-rest (list-item-frame (list) rs) _))
+        (raise-argument-error 'left/list
+                              (symbol->string 'pair?)
+                              '())]
+       [(zipper _ (cons f fs))
+        (raise-argument-error 'left/list
+                              (symbol->string list-item-frame?)
+                              f)]
+       [(zipper _ (list))
+        (raise-argument-error 'left/list
+                              (symbol->string pair?)
+                              '())]))
+   (lambda (z)
+     (match (zipper-context z)
+       [(cons (list-item-frame (cons _ _) _) _)
+        #t]
+       [_ #f]))))
 
-(define (right/list z)
-  (match z
-    [(zipper x (list-rest (list-item-frame ls (list-rest r rs)) context))
-     (zipper r (cons (list-item-frame (cons x ls) rs) context))]
-    [(zipper x (list-rest (list-item-frame ls (list)) _))
-     (raise-argument-error 'right/list
-                           (symbol->string 'pair?)
-                           '())]
-    [(zipper _ (cons f fs))
-     (raise-argument-error 'right/list
-                           (symbol->string 'list-item-frame?)
-                           f)]
-    [(zipper _ (list))
-     (raise-argument-error 'right/list
-                           (symbol->string 'pair?)
-                           '())]))
+(define right/list
+  (zipper-movement
+   (match-lambda
+     [(zipper x (list-rest (list-item-frame ls (list-rest r rs)) context))
+      (zipper r (cons (list-item-frame (cons x ls) rs) context))]
+     [(zipper x (list-rest (list-item-frame ls (list)) _))
+      (raise-argument-error 'right/list
+                            (symbol->string 'pair?)
+                            '())]
+     [(zipper _ (cons f fs))
+      (raise-argument-error 'right/list
+                            (symbol->string 'list-item-frame?)
+                            f)]
+     [(zipper _ (list))
+      (raise-argument-error 'right/list
+                            (symbol->string 'pair?)
+                            '())])
+   (lambda (z)
+     (match (zipper-context z)
+       [(cons (list-item-frame _ (cons _ _)) _)
+        #t]
+       [_ #f]))))
 
-(define (down/list-ref i z)
+(define (down/list-ref i)
   (define (go-right j z)
     (if (= j 0)
         z
@@ -418,7 +466,12 @@
       (raise-argument-error 'down/list-ref
                             (symbol->string 'exact-nonnegative-integer?)
                             i)
-      (go-right i (down/list-first z))))
+      (zipper-movement
+       (lambda (z) (go-right i (down/list-first z)))
+       (match-lambda
+         [(zipper (? pair? xs) _)
+          (> (length xs) i)]
+         [_ #f]))))
 
 (module+ test
   (define some-list (zip '(a b c d)))
@@ -438,43 +491,51 @@
   (check-exn exn:fail:contract?
              (thunk (down/cdr (zip 'nope))))
 
+  (check-true (can-move? down/car (zip (cons 'a 'b))))
+  (check-true (can-move? down/cdr (zip (cons 'a 'b))))
+  (check-false (can-move? down/car (zip 'a)))
+  (check-false (can-move? down/cdr (zip 'a)))
+
   ;; Grabbing a list-ref gives the right focus
-  (check-eqv? (zipper-focus (down/list-ref 3 some-list))
+  (check-eqv? (zipper-focus ((down/list-ref 3) some-list))
               'd)
   ;; Moving left works
-  (check-eqv? (zipper-focus (left/list (down/list-ref 3 some-list)))
+  (check-eqv? (zipper-focus (left/list ((down/list-ref 3) some-list)))
               'c)
   ;; Moving right works
-  (check-eqv? (zipper-focus (right/list (left/list (down/list-ref 3 some-list))))
+  (check-eqv? (zipper-focus (right/list (left/list ((down/list-ref 3) some-list))))
               'd)
+
+  (check-true (can-move? (down/list-ref 2) some-list))
+  (check-false (can-move? (down/list-ref 5) some-list))
 
   ;; Can't go left past beginning
   (check-exn exn:fail:contract?
              (thunk (left/list (down/list-first some-list))))
   ;; Can't go right past end
   (check-exn exn:fail:contract?
-             (thunk (right/list (down/list-ref 3 some-list))))
+             (thunk (right/list ((down/list-ref 3) some-list))))
 
   ;; Rebuilding works
   (check-equal? (rebuild
                  (edit symbol->string
                        (left/list
-                        (down/list-ref 3 some-list))))
+                        ((down/list-ref 3) some-list))))
                 '(a b "c" d))
 
   ;; Can't grab an element past the length of a list
   (check-exn exn:fail:contract?
-             (thunk (down/list-ref 4 some-list)))
+             (thunk ((down/list-ref 4) some-list)))
 
   ;; Can't give bizzarre index values to down/list-ref
   (check-exn exn:fail:contract?
-             (thunk (down/list-ref -1 some-list)))
+             (thunk ((down/list-ref -1) some-list)))
   (check-exn exn:fail:contract?
-             (thunk (down/list-ref "blue whale" some-list)))
+             (thunk ((down/list-ref "blue whale") some-list)))
 
   ;; Focusing on list elements doesn't work when the focus isn't a list
   (check-exn exn:fail:contract?
-             (thunk (down/list-ref 0 (zip "hi"))))
+             (thunk ((down/list-ref 0) (zip "hi"))))
 
   ;; Left and right should fail when the context is empty
   (check-exn exn:fail:contract?
@@ -498,24 +559,30 @@
        (set-add other-members focus)]))
   #:transparent)
 
-(define (down/set-member element z)
-  (match z
-    [(zipper (? set? s) context)
-     (if (set-member? s element)
-         (zipper element (cons (set-member-frame (set-remove s element))
-                               context))
-         (raise-argument-error 'down/set-member
-                               (format "(set-member? ~a ~a)" s element)
-                               s))]
-    [(zipper focus _)
-     (raise-argument-error 'down/set-member
-                           (symbol->string 'set?)
-                           focus)]))
+(define (down/set-member element)
+  (zipper-movement
+   (match-lambda
+     [(zipper (? set? s) context)
+      (if (set-member? s element)
+          (zipper element (cons (set-member-frame (set-remove s element))
+                                context))
+          (raise-argument-error 'down/set-member
+                                (format "(set-member? ~a ~a)" s element)
+                                s))]
+     [(zipper focus _)
+      (raise-argument-error 'down/set-member
+                            (symbol->string 'set?)
+                            focus)])
+   (lambda (z)
+     (and (set? (zipper-focus z))
+          (set-member? (zipper-focus z) element)))))
 
 (module+ test
   (define set-of-sets (zip (set (set 1 2) (set 2 3) 'bananas)))
-  (define set-12 (down/set-member (set 1 2) set-of-sets))
-  (define one (down/set-member 1 set-12))
+  (check-false (can-move? (down/set-member 'a) set-of-sets))
+  (check-true (can-move? (down/set-member (set 1 2)) set-of-sets))
+  (define set-12 ((down/set-member (set 1 2)) set-of-sets))
+  (define one ((down/set-member 1) set-12))
   (check-equal? (zipper-focus one) 1)
   (define other-set (rebuild (edit add1 one)))
   (check-equal? other-set (set (set 2) 'bananas (set 3 2)))
@@ -523,3 +590,4 @@
              (thunk (down/set-member "halløjsa" set-of-sets)))
   (check-exn exn:fail:contract?
              (thunk (down/set-member 1 (zip (cons 1 2))))))
+
