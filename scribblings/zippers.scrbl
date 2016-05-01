@@ -28,7 +28,7 @@
 
 @defmodule[zippers]
 
-A "zipper" is a cursor into a pure datatype that supports
+A "zipper" is a cursor into an immutable datatype that supports
 efficient updates in the immediate vicinity of the focus of
 the cursor, and where moving the cursor elsewhere takes time
 and allocation linear in the distance moved.
