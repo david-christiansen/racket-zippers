@@ -476,6 +476,12 @@
 (module+ test
   (define some-list (zip '(a b c d)))
   (define right-twice (down/cdr (down/cdr some-list)))
+  (check-true (can-move? up right-twice))
+  (check-false (can-move? up some-list))
+  (check-true ((flat-contract-predicate (zipper-in/c pair-cdr-frame?))
+               right-twice))
+  (check-false ((flat-contract-predicate (zipper-in/c pair-car-frame?))
+                right-twice))
   (check-equal? right-twice
                 (zipper '(c d)
                         (list (pair-cdr-frame 'b)
@@ -496,6 +502,8 @@
   (check-false (can-move? down/car (zip 'a)))
   (check-false (can-move? down/cdr (zip 'a)))
 
+  (check-false (can-move? (down/list-ref 3) (zip "hello")))
+
   ;; Grabbing a list-ref gives the right focus
   (check-eqv? (zipper-focus ((down/list-ref 3) some-list))
               'd)
@@ -509,10 +517,17 @@
   (check-true (can-move? (down/list-ref 2) some-list))
   (check-false (can-move? (down/list-ref 5) some-list))
 
+  (check-true (can-move? down/list-first some-list))
+  (check-false (can-move? down/list-first (zip '())))
+  (check-true (can-move? right/list (down/list-first some-list)))
+  (check-false (can-move? left/list (down/list-first some-list)))
+
   ;; Can't go left past beginning
+  (check-false (can-move? left/list (down/list-first some-list)))
   (check-exn exn:fail:contract?
              (thunk (left/list (down/list-first some-list))))
   ;; Can't go right past end
+  (check-false (can-move? right/list ((down/list-ref 3) some-list)))
   (check-exn exn:fail:contract?
              (thunk (right/list ((down/list-ref 3) some-list))))
 
@@ -586,6 +601,8 @@
   (check-equal? (zipper-focus one) 1)
   (define other-set (rebuild (edit add1 one)))
   (check-equal? other-set (set (set 2) 'bananas (set 3 2)))
+  (check-exn exn:fail:contract?
+             (thunk (down/set-member 1 (set 2 3))))
   (check-exn exn:fail:contract?
              (thunk (down/set-member "halløjsa" set-of-sets)))
   (check-exn exn:fail:contract?
