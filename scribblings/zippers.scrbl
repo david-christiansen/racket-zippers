@@ -16,6 +16,13 @@
                                  #:number 5
                                  #:volume 7)))
 
+@(define derivative-paper
+   (make-bib
+    #:title    "The Derivative of a Regular Type is its Type of One-Hole Contexts"
+    #:date     (date 0 0 0 1 1 2001 0 0 #f 0)
+    #:author   (authors (author-name "Conor" "McBride"))
+    #:location @list["Unpublished, available " @hyperlink["http://strictlypositive.org/diff.pdf"]{from author}]))
+
 @title{Zippers for Racket}
 @author{David Christiansen}
 
@@ -57,7 +64,8 @@ the focus can be moved upwards to the parent node using
 @racket[up].
 
 @subsection{Implementing Zippers for New Types}
-If your datatype is a struct, then you can use 
+If your datatype is a tree in which the nodes are 
+@racket[struct]s, then you can use 
 @racket[define-struct-zipper-frames] to generate the
 necessary code for instances of that struct to participate
 in zippers. If your datatype is not a struct, the you need
@@ -71,7 +79,11 @@ to do a bit more work:
            extracting the relevant substructure to the
            focus. These procedures should raise an exception
            if they are applied to something other than a
-           zipper focused on the right kind of value.}]
+           zipper focused on the right kind of value.
+           Consider putting the descent procedure into a 
+           @racket[zipper-movement] to enable more checks.}
+          @item{Optionally define other movements, such as 
+           @racket[left/list] and @racket[right/list].}]
 
 @section[#:tag "zippers-reference"]{Reference}
 
@@ -240,6 +252,11 @@ to do a bit more work:
  replacing the field accessed by @racketid[acc].
  Additionally, a zipper movement @racket[down/acc] is
  generated to descend a zipper along that accessor.
+
+ This is an instance of the product rule 
+ @~cite[derivative-paper] when we construe a datatype as
+ being the fixed point of a coproduct of functors given by
+ @racket[struct]s.
 
  @examples[
      #:eval helper-eval
