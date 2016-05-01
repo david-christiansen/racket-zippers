@@ -124,7 +124,9 @@
   (check-true ((flat-contract-predicate (zipper-in/c string?))
                (zipper #f '("fake frame"))))
   (check-false ((flat-contract-predicate (zipper-in/c string?))
-                (zipper #f '('fake 'context)))))
+                (zipper #f '('fake 'context))))
+  (check-false ((flat-contract-predicate (zipper-in/c string?))
+                'not-a-zipper)))
 
 (struct zipper-movement (move possible?)
   #:property prop:procedure (struct-field-index move)
